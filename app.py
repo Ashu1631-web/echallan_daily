@@ -9,7 +9,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 
 # -----------------------------
-# PAGE CONFIG (Gov Style)
+# PAGE CONFIG (Gov Dashboard)
 # -----------------------------
 st.set_page_config(
     page_title="🚦 eChallan Gov Dashboard",
@@ -17,7 +17,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom Theme Header
+# -----------------------------
+# Custom Government UI Theme
+# -----------------------------
 st.markdown("""
     <style>
         .main {background-color: #f8f9fa;}
@@ -27,7 +29,7 @@ st.markdown("""
             background: white;
             padding: 15px;
             border-radius: 12px;
-            box-shadow: 0px 2px 6px rgba(0,0,0,0.1);
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.15);
         }
     </style>
 """, unsafe_allow_html=True)
@@ -39,8 +41,13 @@ st.markdown("""
 def load_data():
     df = pd.read_csv("echallan_daily_data.csv")
     df["date"] = pd.to_datetime(df["date"])
+
+    # Extra Features
+    df["year"] = df["date"].dt.year
     df["month"] = df["date"].dt.strftime("%Y-%m")
+    df["month_name"] = df["date"].dt.strftime("%B")
     df["day"] = df["date"].dt.day
+
     return df
 
 df = load_data()
@@ -48,7 +55,7 @@ df = load_data()
 # -----------------------------
 # SIDEBAR FILTERS
 # -----------------------------
-st.sidebar.header("📌 Filters")
+st.sidebar.header("📌 Dashboard Filters")
 
 start = st.sidebar.date_input("Start Date", df["date"].min())
 end = st.sidebar.date_input("End Date", df["date"].max())
@@ -60,7 +67,7 @@ filtered = df[(df["date"] >= pd.to_datetime(start)) &
 # TITLE
 # -----------------------------
 st.title("🚦 eChallan Government Analytics Dashboard")
-st.markdown("Interactive Dashboard with Reports, Heatmaps & Downloads")
+st.markdown("Interactive Dashboard with Trends, Rankings, Heatmaps & Reports")
 
 # -----------------------------
 # KPI SECTION
@@ -75,43 +82,87 @@ col4.metric("Total Amount ₹", f"{filtered['totalAmount'].sum():,}")
 st.divider()
 
 # =========================================================
-# 📈 Plotly Interactive Line Chart
+# 📈 Interactive Line Trend Chart
 # =========================================================
-st.subheader("📈 Interactive Challan Trend")
+st.subheader("📈 Daily Challan Trends")
 
 fig1 = px.line(
     filtered,
     x="date",
     y=["totalChallan", "disposedChallan", "pendingChallan"],
     markers=True,
-    title="Daily Challan Trends"
+    title="Challan Trend Over Time"
 )
 st.plotly_chart(fig1, use_container_width=True)
 
 # =========================================================
-# 📊 Plotly Bar Chart
+# 📅 Year-wise Analysis
 # =========================================================
-st.subheader("💰 Amount Collection Comparison")
+st.subheader("📅 Year-wise Challan Summary")
 
-amount_df = pd.DataFrame({
-    "Category": ["Pending Amount", "Disposed Amount"],
-    "Amount": [
-        filtered["pendingAmount"].sum(),
-        filtered["disposedAmount"].sum()
-    ]
-})
+yearly = filtered.groupby("year")["totalChallan"].sum().reset_index()
 
-fig2 = px.bar(
-    amount_df,
-    x="Category",
-    y="Amount",
+fig_year = px.bar(
+    yearly,
+    x="year",
+    y="totalChallan",
     text_auto=True,
-    title="Pending vs Disposed Amount"
+    title="Total Challans Year-wise"
 )
-st.plotly_chart(fig2, use_container_width=True)
+st.plotly_chart(fig_year, use_container_width=True)
 
 # =========================================================
-# 🥧 Donut Chart
+# 🗓️ Month-wise Trend
+# =========================================================
+st.subheader("🗓️ Month-wise Challan Trend")
+
+monthly = filtered.groupby("month_name")["totalChallan"].sum().reset_index()
+
+fig_month = px.line(
+    monthly,
+    x="month_name",
+    y="totalChallan",
+    markers=True,
+    title="Monthly Challan Trend"
+)
+st.plotly_chart(fig_month, use_container_width=True)
+
+# =========================================================
+# 🏆 Top 10 Highest Challan Days
+# =========================================================
+st.subheader("🏆 Top 10 Highest Challan Days")
+
+top10 = filtered.sort_values("totalChallan", ascending=False).head(10)
+
+fig_top10 = px.bar(
+    top10,
+    x="date",
+    y="totalChallan",
+    text_auto=True,
+    title="Top 10 Peak Challan Dates"
+)
+st.plotly_chart(fig_top10, use_container_width=True)
+
+st.dataframe(top10[["date", "totalChallan", "pendingChallan", "disposedChallan"]])
+
+# =========================================================
+# 💰 Top 10 Pending Amount Days
+# =========================================================
+st.subheader("💰 Top 10 Days with Highest Pending Amount")
+
+top_amount = filtered.sort_values("pendingAmount", ascending=False).head(10)
+
+fig_amt = px.bar(
+    top_amount,
+    x="date",
+    y="pendingAmount",
+    text_auto=True,
+    title="Top 10 Pending Amount Dates"
+)
+st.plotly_chart(fig_amt, use_container_width=True)
+
+# =========================================================
+# 🥧 Donut Chart Distribution
 # =========================================================
 st.subheader("🥧 Pending vs Disposed Challans")
 
@@ -123,14 +174,14 @@ pie_df = pd.DataFrame({
     ]
 })
 
-fig3 = px.pie(
+fig_pie = px.pie(
     pie_df,
     names="Type",
     values="Count",
     hole=0.5,
-    title="Challan Distribution"
+    title="Challan Status Distribution"
 )
-st.plotly_chart(fig3, use_container_width=True)
+st.plotly_chart(fig_pie, use_container_width=True)
 
 # =========================================================
 # 🔥 Calendar Heatmap View
@@ -144,21 +195,22 @@ heatmap = filtered.pivot_table(
     aggfunc="sum"
 )
 
-fig4 = px.imshow(
+fig_heat = px.imshow(
     heatmap,
     aspect="auto",
     title="Heatmap of Challans by Day & Month"
 )
-st.plotly_chart(fig4, use_container_width=True)
+st.plotly_chart(fig_heat, use_container_width=True)
 
 # =========================================================
-# 📥 Download Report Buttons
+# 📥 Download Reports (Excel + PDF)
 # =========================================================
 st.subheader("📥 Download Reports")
 
 # Excel Download
 excel_buffer = BytesIO()
 filtered.to_excel(excel_buffer, index=False, engine="openpyxl")
+
 st.download_button(
     label="⬇️ Download Excel Report",
     data=excel_buffer.getvalue(),
@@ -192,4 +244,10 @@ st.download_button(
     mime="application/pdf"
 )
 
-st.success("✅ Premium Dashboard Loaded Successfully!")
+# =========================================================
+# Data Preview
+# =========================================================
+st.subheader("📄 Dataset Preview")
+st.dataframe(filtered.tail(15))
+
+st.success("✅ Final Premium Government Dashboard Ready!")
